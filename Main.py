@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+from Crypto.Cipher import AES
+import hashlib
 import random
 
 ZWC = [
@@ -23,19 +25,34 @@ ZWC = [
 
 MARKER = '\ufeff'
 
-def xor_encrypt(data_bytes, key):
-    key_bytes = key.encode("utf-8")
-    encrypted = bytearray()
-    for i in range(len(data_bytes)):
-        encrypted.append(data_bytes[i] ^ key_bytes[i % len(key_bytes)])
-    return bytes(encrypted)
+def aes_encrypt(data_bytes, password):
+    key = hashlib.sha256(password.encode()).digest() # converts password to 256 bit key
+    cipher = AES.new(key, AES.MODE_EAX)
+
+    ciphertext, tag = cipher.encrypt_and_digest(data_bytes) # encrypts data and generates tag
+
+    return cipher.nonce + tag + ciphertext
+
+
+def aes_decrypt(encrypted_bytes, password):
+    key = hashlib.sha256(password.encode()).digest()
+
+    nonce = encrypted_bytes[:16]
+    tag = encrypted_bytes[16:32]
+    ciphertext = encrypted_bytes[32:]
+
+    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
+    plaintext = cipher.decrypt(ciphertext)
+
+    cipher.verify(tag)  # raises ValueError if wrong key
+    return plaintext
 
 # Hide secret file in cover file
 def hide_message(secret_text, cover_text, position = "middle", key=None):
     # converts secret text into bytes
     data_bytes = secret_text.encode("utf-8")
     if key:
-        data_bytes = xor_encrypt(data_bytes, key)
+        data_bytes = aes_encrypt(data_bytes, key)
     # Convert secret to hex
     hex_msg = data_bytes.hex()
 
@@ -101,7 +118,7 @@ def reveal_message(stego_text, key=None):
     try:
         data_bytes = bytes.fromhex(hex_msg)
         if key:
-            data_bytes = xor_encrypt(data_bytes, key)
+            data_bytes = aes_decrypt(data_bytes, key)
 
         return data_bytes.decode("utf-8")
     except:
