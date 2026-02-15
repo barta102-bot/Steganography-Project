@@ -23,7 +23,9 @@ ZWC = [
     '\u2066',  # f
 ]
 
-MARKER = '\ufeff'
+
+
+# MARKER = '\ufeff'
 
 def aes_encrypt(data_bytes, password):
     key = hashlib.sha256(password.encode()).digest() # converts password to 256 bit key
@@ -48,7 +50,7 @@ def aes_decrypt(encrypted_bytes, password):
     return plaintext
 
 # Hide secret file in cover file
-def hide_message(secret_text, cover_text, position = "middle", key=None):
+def hide_message(secret_text, cover_text, position = "random", key=None):
     # converts secret text into bytes
     data_bytes = secret_text.encode("utf-8")
     if key:
@@ -61,18 +63,15 @@ def hide_message(secret_text, cover_text, position = "middle", key=None):
 
     #Insert location
     if position == "front":
-        payload = MARKER + hidden + MARKER
-        return payload + cover_text
+        return hidden + cover_text
     elif position == "end":
-        payload = MARKER + hidden + MARKER
-        return cover_text + payload
-    elif position == "random":
-        return spread_hex(hidden, cover_text)
-    else:
-        payload = MARKER + hidden + MARKER
+        return cover_text + hidden
+    elif position == "middle":
         mid = len(cover_text) // 2
-        return cover_text[:mid] + payload + cover_text[mid:]
-
+        return cover_text[:mid] + hidden + cover_text[mid:]
+    else:
+        return spread_hex(hidden, cover_text)
+    
 
 #Randomize where hex code is located for spread position
 def spread_hex(hidden, cover_text):
@@ -101,22 +100,18 @@ def spread_hex(hidden, cover_text):
 
 # Reveal hidden file
 def reveal_message(stego_text, key=None):
-
-    parts = stego_text.split(MARKER)
-
-    if len(parts) < 3:
-        return None
-
-    hidden = parts[1]
-
     hex_msg = ""
 
-    for ch in hidden:
+    for ch in stego_text:
         if ch in ZWC:
             hex_msg += format(ZWC.index(ch), "x")
 
+    if not hex_msg:
+        return None
+
     try:
         data_bytes = bytes.fromhex(hex_msg)
+
         if key:
             data_bytes = aes_decrypt(data_bytes, key)
 
@@ -156,7 +151,7 @@ def main():
         secret_file = sys.argv[2]
         cover_file = sys.argv[3]
         output_file = sys.argv[4]
-        position = sys.argv[5].lower() if len(sys.argv) >= 6 else "middle"
+        position = sys.argv[5].lower() if len(sys.argv) >= 6 else "random"
         key = sys.argv[6] if len(sys.argv) == 7 else None
 
         secret = read_file(secret_file)
