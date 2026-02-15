@@ -1,1 +1,1 @@
-I've confirmed it's an issue with random
+are program will now encode bits with both zero with characters channel and converting certain letters of the alphabet to other standards. should be pretty cool, the problem is that there needs to be enough characters for the homo glyph channel to work, otherwise it just uses zero width characters
