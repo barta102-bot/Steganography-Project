@@ -3,7 +3,9 @@ from pathlib import Path
 from Crypto.Cipher import AES
 import hashlib
 import random
+import zlib
 
+# Zero Width Characters (ZWC) mapping for hex digits 0-f
 ZWC = [
     '\u2060',  # 0
     '\u200b',  # 1
@@ -40,8 +42,8 @@ def aes_decrypt(encrypted_bytes, password):
     key = hashlib.sha256(password.encode()).digest()
 
     nonce = encrypted_bytes[:16]
-    tag = encrypted_bytes[16:32]
-    ciphertext = encrypted_bytes[32:]
+    tag = encrypted_bytes[16:32] 
+    ciphertext = encrypted_bytes[32:] # aes encryption produces 16 byte nonce, 16 byte tag, then the ciphertext, so we slice accordingly
 
     cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
     plaintext = cipher.decrypt(ciphertext)
@@ -53,13 +55,12 @@ def aes_decrypt(encrypted_bytes, password):
 def hide_message(secret_text, cover_text, position = "random", key=None):
     # converts secret text into bytes
     data_bytes = secret_text.encode("utf-8")
+    data_bytes = zlib.compress(data_bytes, level=9) #compression
     if key:
         data_bytes = aes_encrypt(data_bytes, key)
-    # Convert secret to hex
-    hex_msg = data_bytes.hex()
-
-    # Encode hex using zero-width chars
-    hidden = "".join(ZWC[int(ch, 16)] for ch in hex_msg)
+        
+    # Convert bytes to hex and then to ZWC characters
+    hidden = "".join(ZWC[int(c, 16)] for c in data_bytes.hex())
 
     #Insert location
     if position == "front":
@@ -71,53 +72,56 @@ def hide_message(secret_text, cover_text, position = "random", key=None):
         return cover_text[:mid] + hidden + cover_text[mid:]
     else:
         return spread_hex(hidden, cover_text)
-    
 
-#Randomize where hex code is located for spread position
-def spread_hex(hidden, cover_text):
-    if len(cover_text) == 0:
-        return hidden
-    
-    num_hex_chars = len(hidden)
-    cover_len = len(cover_text)
-
-    interval = cover_len // (num_hex_chars + 1)
-
-    result = ""
-    hex_indexing = 0
-
-    for i, char in enumerate(cover_text):
-        result += char
-
-        if interval > 0 and (i + 1) % interval == 0 and hex_indexing < num_hex_chars:
-            result += hidden[hex_indexing]
-            hex_indexing += 1
-
-    if hex_indexing < num_hex_chars:
-        result += hidden[hex_indexing:]
-
-    return result
-
-# Reveal hidden file
+# Reveal hidden message from stego text
 def reveal_message(stego_text, key=None):
     hex_msg = ""
 
     for ch in stego_text:
         if ch in ZWC:
-            hex_msg += format(ZWC.index(ch), "x")
+            hex_msg += format(ZWC.index(ch), "x") # converts ZWC back to hex digit by finding its index in the ZWC list and formatting it as a hex string
 
     if not hex_msg:
         return None
 
     try:
-        data_bytes = bytes.fromhex(hex_msg)
-
+        data_bytes = bytes.fromhex(hex_msg) # converts hex string back to bytes
         if key:
             data_bytes = aes_decrypt(data_bytes, key)
 
+        data_bytes = zlib.decompress(data_bytes) #decompression
+        
         return data_bytes.decode("utf-8")
     except:
         return None
+
+
+#Randomize where hex code is located for spread position
+def spread_hex(hidden, cover_text):
+    if not cover_text:
+        return hidden
+
+    cover_len = len(cover_text)
+    hidden_len = len(hidden)
+
+    total_len = cover_len + hidden_len
+
+    positions = sorted(random.sample(range(total_len), hidden_len))
+
+    result = []
+    h_index = 0
+    c_index = 0
+
+    for i in range(total_len):
+        if h_index < hidden_len and i == positions[h_index]:
+            result.append(hidden[h_index])
+            h_index += 1
+        else:
+            result.append(cover_text[c_index])
+            c_index += 1
+
+    return "".join(result)
+
 
 
 # File Helpers
@@ -161,7 +165,7 @@ def main():
 
         write_file(output_file, stego)
 
-        print("✓ Message hidden successfully.")
+        print("Message hidden successfully.")
         print(f"Output saved to: {output_file}")
 
     # Reveal Mode
@@ -180,12 +184,12 @@ def main():
         secret = reveal_message(stego, key)
 
         if secret is None:
-            print("✗ No hidden message found.")
+            print("No hidden message found.")
             sys.exit(1)
 
         write_file(output_file, secret)
 
-        print("✓ Hidden message extracted.")
+        print("Hidden message extracted.")
         print(f"Saved to: {output_file}")
 
     else:
