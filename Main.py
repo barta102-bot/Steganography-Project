@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+from Crypto.Cipher import AES
+import hashlib
 import random
 
 ZWC = [
@@ -23,12 +25,36 @@ ZWC = [
 
 MARKER = '\ufeff'
 
+def aes_encrypt(data_bytes, password):
+    key = hashlib.sha256(password.encode()).digest() # converts password to 256 bit key
+    cipher = AES.new(key, AES.MODE_EAX)
+
+    ciphertext, tag = cipher.encrypt_and_digest(data_bytes) # encrypts data and generates tag
+
+    return cipher.nonce + tag + ciphertext
+
+
+def aes_decrypt(encrypted_bytes, password):
+    key = hashlib.sha256(password.encode()).digest()
+
+    nonce = encrypted_bytes[:16]
+    tag = encrypted_bytes[16:32]
+    ciphertext = encrypted_bytes[32:]
+
+    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
+    plaintext = cipher.decrypt(ciphertext)
+
+    cipher.verify(tag)  # raises ValueError if wrong key
+    return plaintext
 
 # Hide secret file in cover file
-def hide_message(secret_text, cover_text, position = "middle"):
-
+def hide_message(secret_text, cover_text, position = "middle", key=None):
+    # converts secret text into bytes
+    data_bytes = secret_text.encode("utf-8")
+    if key:
+        data_bytes = aes_encrypt(data_bytes, key)
     # Convert secret to hex
-    hex_msg = secret_text.encode("utf-8").hex()
+    hex_msg = data_bytes.hex()
 
     # Encode hex using zero-width chars
     hidden = "".join(ZWC[int(ch, 16)] for ch in hex_msg)
@@ -74,7 +100,7 @@ def spread_hex(hidden, cover_text):
     return result
 
 # Reveal hidden file
-def reveal_message(stego_text):
+def reveal_message(stego_text, key=None):
 
     parts = stego_text.split(MARKER)
 
@@ -90,7 +116,11 @@ def reveal_message(stego_text):
             hex_msg += format(ZWC.index(ch), "x")
 
     try:
-        return bytes.fromhex(hex_msg).decode("utf-8")
+        data_bytes = bytes.fromhex(hex_msg)
+        if key:
+            data_bytes = aes_decrypt(data_bytes, key)
+
+        return data_bytes.decode("utf-8")
     except:
         return None
 
@@ -109,8 +139,8 @@ def main():
 
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  Hide  : steg.py hide secret.txt cover.txt output.txt position")
-        print("  Reveal: steg.py reveal stego.txt output.txt")
+        print("  Hide  : steg.py hide secret.txt cover.txt output.txt [position] [key]")
+        print("  Reveal: steg.py reveal stego.txt output.txt [key]")
         print(" Positions: Front, Middle (default), End, Random")
         sys.exit(1)
 
@@ -119,19 +149,20 @@ def main():
     # Hide Mode
     if mode == "hide":
 
-        if len(sys.argv) < 5 or len(sys.argv) > 6:
-            print("Usage: steg.py hide secret.txt cover.txt output.txt position")
+        if len(sys.argv) < 5 or len(sys.argv) > 7:
+            print("Usage: steg.py hide secret.txt cover.txt output.txt [position] [key]")
             sys.exit(1)
 
         secret_file = sys.argv[2]
         cover_file = sys.argv[3]
         output_file = sys.argv[4]
-        position = sys.argv[5].lower() if len(sys.argv) == 6 else "middle"
+        position = sys.argv[5].lower() if len(sys.argv) >= 6 else "middle"
+        key = sys.argv[6] if len(sys.argv) == 7 else None
 
         secret = read_file(secret_file)
         cover = read_file(cover_file)
 
-        stego = hide_message(secret, cover, position)
+        stego = hide_message(secret, cover, position, key)
 
         write_file(output_file, stego)
 
@@ -141,16 +172,17 @@ def main():
     # Reveal Mode
     elif mode == "reveal":
 
-        if len(sys.argv) != 4:
-            print("Usage: steg.py reveal stego.txt output.txt")
+        if len(sys.argv) < 4 or len(sys.argv) > 5:
+            print("Usage: steg.py reveal stego.txt output.txt [key]")
             sys.exit(1)
 
         stego_file = sys.argv[2]
         output_file = sys.argv[3]
+        key = sys.argv[4] if len(sys.argv) == 5 else None
 
         stego = read_file(stego_file)
 
-        secret = reveal_message(stego)
+        secret = reveal_message(stego, key)
 
         if secret is None:
             print("✗ No hidden message found.")
