@@ -54,7 +54,7 @@ def aes_decrypt(encrypted_bytes, password):
 # Hide secret file in cover file
 def hide_message(secret_text, cover_text, position = "random", key=None):
     # converts secret text into bytes
-    data_bytes = secret_text.encode("utf-8")
+    data_bytes = secret_text
     data_bytes = zlib.compress(data_bytes, level=9) #compression
     if key:
         data_bytes = aes_encrypt(data_bytes, key)
@@ -91,7 +91,7 @@ def reveal_message(stego_text, key=None):
 
         data_bytes = zlib.decompress(data_bytes) #decompression
         
-        return data_bytes.decode("utf-8")
+        return data_bytes
     except:
         return None
 
@@ -132,9 +132,15 @@ def read_file(path):
 def write_file(path, data):
     Path(path).write_text(data, encoding="utf-8")
 
+def read_file_bytes(path):
+    return Path(path).read_bytes()
+
+def write_file_bytes(path, data):
+    Path(path).write_bytes(data)
+
 
 # Main CLI
-def main():
+def main():  
 
     if len(sys.argv) < 2:
         print("Usage:")
@@ -158,7 +164,7 @@ def main():
         position = sys.argv[5].lower() if len(sys.argv) >= 6 else "random"
         key = sys.argv[6] if len(sys.argv) == 7 else None
 
-        secret = read_file(secret_file)
+        secret = read_file_bytes(secret_file)
         cover = read_file(cover_file)
 
         stego = hide_message(secret, cover, position, key)
@@ -187,7 +193,7 @@ def main():
             print("No hidden message found.")
             sys.exit(1)
 
-        write_file(output_file, secret)
+        write_file_bytes(output_file, secret)
 
         print("Hidden message extracted.")
         print(f"Saved to: {output_file}")
