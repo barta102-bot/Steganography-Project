@@ -1,1 +1,1 @@
-added compression and decompression now. should be simple enough. now I'm testing with a secret longer than the cover.
+I am now going to hide an image in this text.
